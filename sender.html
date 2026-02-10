@@ -131,21 +131,43 @@
       footer a:hover {
         text-decoration: underline;
       }
-      nav {
-        margin-bottom: 20px;
+      .turn-config {
+        border: 1px solid #d0d7de;
+        padding: 16px 20px;
+        margin: 12px 0;
+        border-radius: 10px;
+        background: #fff8e1;
+      }
+      .turn-config h3 {
+        margin: 0 0 8px;
+        font-size: 1rem;
+        color: #24292f;
+      }
+      .turn-config p {
+        margin: 0 0 10px;
         font-size: 0.85rem;
+        color: #57606a;
       }
-      nav a {
-        color: #0969da;
-        text-decoration: none;
-        margin-right: 12px;
-      }
-      nav a:hover {
-        text-decoration: underline;
-      }
-      nav a.active {
+      .turn-config label {
+        display: block;
+        font-size: 0.82rem;
         font-weight: 600;
-        text-decoration: underline;
+        margin-top: 8px;
+        color: #24292f;
+      }
+      .turn-config input {
+        width: 100%;
+        padding: 7px 10px;
+        margin: 4px 0;
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-family: "SF Mono", "Fira Code", monospace;
+      }
+      .turn-config input:focus {
+        outline: none;
+        border-color: #0969da;
+        box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
       }
       .troubleshoot {
         display: none;
@@ -191,32 +213,61 @@
       <details open>
         <summary>Connection failed — ICE disconnected</summary>
         <p>
-          Cross-device connections may fail if no usable ICE candidates remain
-          after mDNS filtering. This can happen when the browser blocks all
-          non-mDNS candidates or when the devices are on different networks.
+          The connection could not be established. This usually means your NAT
+          type requires a TURN relay server.
         </p>
-        <p><strong>Fixes (pick one):</strong></p>
+        <p><strong>Fixes:</strong></p>
         <ol>
           <li>
-            <strong>Use the auto-signaling mode instead</strong> — run
-            <code>node server.js</code> and open the Network URL on both
-            devices. Trickle ICE works more reliably across devices.
+            <strong>Add TURN credentials above</strong> — sign up for free at
+            <a href="https://dashboard.metered.ca/signup" target="_blank"
+              >metered.ca</a
+            >
+            and paste your username + credential.
           </li>
           <li>
-            <strong>Disable mDNS anonymization in Brave:</strong> go to
-            <code>brave://flags/#enable-webrtc-hide-local-ips-with-mdns</code> →
-            set to <strong>Disabled</strong> → relaunch Brave.
+            <strong>Disable mDNS in Firefox:</strong> go to
+            <code>about:config</code> → set
+            <code>media.peerconnection.ice.obfuscate_host_addresses</code> to
+            <strong>false</strong>.
           </li>
           <li>
             <strong>Ensure both devices are on the same network</strong> (same
-            Wi-Fi / LAN). Cross-network connections require a TURN relay server.
-          </li>
-          <li>
-            <strong>Lower Brave Shields</strong> for this page (click the lion
-            icon → toggle Shields off).
+            Wi-Fi / LAN) if not using TURN.
           </li>
         </ol>
       </details>
+    </div>
+
+    <!-- TURN Server Configuration -->
+    <div class="turn-config">
+      <h3>TURN Server (Required for most networks)</h3>
+      <p>
+        Get free credentials at
+        <a href="https://dashboard.metered.ca/signup" target="_blank"
+          >metered.ca</a
+        >
+        (free plan = 500MB/month). Paste your credentials below.
+      </p>
+      <label>Username</label>
+      <input
+        type="text"
+        id="turnUsername"
+        placeholder="e.g. abc123def456ghi789"
+      />
+      <label>Credential (password)</label>
+      <input
+        type="text"
+        id="turnCredential"
+        placeholder="e.g. xYz789AbC012DeF345"
+      />
+      <label>Domain (from your Metered dashboard)</label>
+      <input
+        type="text"
+        id="turnDomain"
+        value="standard.relay.metered.ca"
+        placeholder="standard.relay.metered.ca"
+      />
     </div>
 
     <!-- STEP 1: Create offer -->
@@ -283,35 +334,75 @@
       }
 
       // ========== Helpers ==========
-      // Strip mDNS .local candidates from SDP — they can't be resolved on
-      // a different device, which causes ICE failures in cross-device manual mode.
       function stripMdnsCandidates(sdp) {
         return sdp
-          .split('\r\n')
-          .filter(line => !(line.startsWith('a=candidate:') && line.includes('.local')))
-          .join('\r\n');
+          .split("\r\n")
+          .filter(
+            (line) =>
+              !(line.startsWith("a=candidate:") && line.includes(".local")),
+          )
+          .join("\r\n");
+      }
+
+      // Build ICE servers array with TURN if credentials are provided
+      function getIceServers() {
+        const username = document.getElementById("turnUsername").value.trim();
+        const credential = document
+          .getElementById("turnCredential")
+          .value.trim();
+        const domain =
+          document.getElementById("turnDomain").value.trim() ||
+          "standard.relay.metered.ca";
+
+        const servers = [
+          { urls: "stun:stun.l.google.com:19302" },
+          { urls: `stun:stun.relay.metered.ca:80` },
+        ];
+
+        if (username && credential) {
+          // Add TURN servers on multiple ports/protocols for maximum compatibility
+          servers.push(
+            {
+              urls: `turn:${domain}:80`,
+              username: username,
+              credential: credential,
+            },
+            {
+              urls: `turn:${domain}:80?transport=tcp`,
+              username: username,
+              credential: credential,
+            },
+            {
+              urls: `turn:${domain}:443`,
+              username: username,
+              credential: credential,
+            },
+            {
+              urls: `turns:${domain}:443?transport=tcp`,
+              username: username,
+              credential: credential,
+            },
+          );
+          console.log("[Sender] TURN servers configured with credentials.");
+        } else {
+          console.warn(
+            "[Sender] No TURN credentials — STUN only. Connection may fail behind symmetric NAT.",
+          );
+        }
+
+        return servers;
       }
 
       // ========== Step 1: Create Connection & Offer ==========
       createOfferBtn.onclick = async () => {
         setStatus("Creating peer connection...");
 
-        // STUN servers help discover public IP for NAT traversal.
-        // Multiple servers improve the chances of getting srflx candidates
-        // with real IPs (essential for cross-device manual mode).
         pc = new RTCPeerConnection({
-          iceServers: [
-            { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:stun1.l.google.com:19302" },
-            { urls: "stun:stun2.l.google.com:19302" },
-            { urls: "stun:stun3.l.google.com:19302" },
-            { urls: "stun:stun4.l.google.com:19302" },
-          ],
+          iceServers: getIceServers(),
           iceCandidatePoolSize: 2,
         });
 
         // === Create data channel BEFORE creating offer ===
-        // The sender creates the channel; the receiver gets it via ondatachannel
         dataChannel = pc.createDataChannel("chat");
         dataChannel.onopen = () => {
           setStatus("Data channel OPEN! You can chat now.");
@@ -323,14 +414,10 @@
         };
 
         // === ICE Candidate Handling ===
-        // We wait for ALL ICE candidates to be gathered (they get embedded in the SDP).
-        // When onicecandidate fires with null, gathering is complete.
         pc.onicecandidate = (event) => {
           if (event.candidate) {
             console.log("ICE candidate found:", event.candidate.candidate);
           } else {
-            // All candidates gathered — build the offer with mDNS candidates
-            // stripped so it works when pasted on a different device.
             const desc = pc.localDescription;
             const sanitized = {
               type: desc.type,
@@ -361,7 +448,7 @@
         );
       };
 
-      // Copy offer to clipboard (with fallback for Brave / file:// contexts)
+      // Copy offer to clipboard
       copyOfferBtn.onclick = () => {
         copyToClipboard(offerOutput.value);
         setStatus("Offer copied! Now paste it in the Receiver page.");
@@ -410,7 +497,6 @@
         messageInput.value = "";
       };
 
-      // Send on Enter key
       messageInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
@@ -418,7 +504,9 @@
         }
       });
 
-      setStatus("Ready. Click 'Create Offer' to start.");
+      setStatus(
+        "Ready. Add TURN credentials above, then click 'Create Offer'.",
+      );
     </script>
 
     <footer>
