@@ -281,12 +281,12 @@ To test between two devices (e.g., laptop + phone on the same Wi-Fi):
 
 > **Different networks?** The code includes a free TURN relay server ([Open Relay](https://www.metered.ca/tools/openrelay/)) as a fallback, so connections work even when direct P2P is blocked by NAT or firewalls.
 
-| Scenario | STUN only | STUN + TURN (current setup) |
-|---|---|---|
-| Same device, two tabs | ✅ | ✅ |
-| Same Wi-Fi, two devices | ✅ (usually) | ✅ |
-| Different networks | ❌ | ✅ |
-| Behind strict corporate firewall | ❌ | ✅ (TCP TURN) |
+| Scenario                         | STUN only    | STUN + TURN (current setup) |
+| -------------------------------- | ------------ | --------------------------- |
+| Same device, two tabs            | ✅           | ✅                          |
+| Same Wi-Fi, two devices          | ✅ (usually) | ✅                          |
+| Different networks               | ❌           | ✅                          |
+| Behind strict corporate firewall | ❌           | ✅ (TCP TURN)               |
 
 > **For production**, use a dedicated TURN service like [Metered](https://www.metered.ca/tools/openrelay/), [Twilio](https://www.twilio.com/docs/stun-turn), or [Cloudflare Calls](https://developers.cloudflare.com/calls/) instead of the free Open Relay.
 
