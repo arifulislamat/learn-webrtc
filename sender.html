@@ -191,23 +191,25 @@
       <details open>
         <summary>Connection failed — ICE disconnected</summary>
         <p>
-          <strong>Brave / Chromium-based browsers</strong> anonymize local IPs
-          with <code>.local</code> mDNS addresses for privacy. In manual
-          copy-paste mode, the other tab can't resolve these addresses, so
-          connectivity checks fail.
+          Cross-device connections may fail if no usable ICE candidates remain
+          after mDNS filtering. This can happen when the browser blocks all
+          non-mDNS candidates or when the devices are on different networks.
         </p>
         <p><strong>Fixes (pick one):</strong></p>
         <ol>
           <li>
             <strong>Use the auto-signaling mode instead</strong> — run
-            <code>node server.js</code> and open
-            <a href="http://localhost:8080">localhost:8080</a> in two tabs.
-            Trickle ICE + localhost works reliably in Brave.
+            <code>node server.js</code> and open the Network URL on both
+            devices. Trickle ICE works more reliably across devices.
           </li>
           <li>
             <strong>Disable mDNS anonymization in Brave:</strong> go to
             <code>brave://flags/#enable-webrtc-hide-local-ips-with-mdns</code> →
             set to <strong>Disabled</strong> → relaunch Brave.
+          </li>
+          <li>
+            <strong>Ensure both devices are on the same network</strong> (same
+            Wi-Fi / LAN). Cross-network connections require a TURN relay server.
           </li>
           <li>
             <strong>Lower Brave Shields</strong> for this page (click the lion
@@ -280,16 +282,32 @@
         console.log("[Sender]", msg);
       }
 
+      // ========== Helpers ==========
+      // Strip mDNS .local candidates from SDP — they can't be resolved on
+      // a different device, which causes ICE failures in cross-device manual mode.
+      function stripMdnsCandidates(sdp) {
+        return sdp
+          .split('\r\n')
+          .filter(line => !(line.startsWith('a=candidate:') && line.includes('.local')))
+          .join('\r\n');
+      }
+
       // ========== Step 1: Create Connection & Offer ==========
       createOfferBtn.onclick = async () => {
         setStatus("Creating peer connection...");
 
-        // STUN servers help discover public IP for NAT traversal
+        // STUN servers help discover public IP for NAT traversal.
+        // Multiple servers improve the chances of getting srflx candidates
+        // with real IPs (essential for cross-device manual mode).
         pc = new RTCPeerConnection({
           iceServers: [
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:stun2.l.google.com:19302" },
+            { urls: "stun:stun3.l.google.com:19302" },
+            { urls: "stun:stun4.l.google.com:19302" },
           ],
+          iceCandidatePoolSize: 2,
         });
 
         // === Create data channel BEFORE creating offer ===
@@ -311,9 +329,15 @@
           if (event.candidate) {
             console.log("ICE candidate found:", event.candidate.candidate);
           } else {
-            // All candidates gathered — the full offer (with candidates) is ready
+            // All candidates gathered — build the offer with mDNS candidates
+            // stripped so it works when pasted on a different device.
+            const desc = pc.localDescription;
+            const sanitized = {
+              type: desc.type,
+              sdp: stripMdnsCandidates(desc.sdp),
+            };
             setStatus("ICE gathering complete. Copy the offer below.");
-            offerOutput.value = JSON.stringify(pc.localDescription);
+            offerOutput.value = JSON.stringify(sanitized);
             copyOfferBtn.disabled = false;
           }
         };
