@@ -29,6 +29,7 @@ const fs = require("fs");
 const path = require("path");
 
 const PORT = process.env.PORT || 8080;
+const HOST = "0.0.0.0"; // Listen on all network interfaces (allows cross-device access)
 
 // ────────────────────────────────────────────────────────────
 // HTTP Server — serves static HTML files
@@ -110,12 +111,27 @@ wss.on("connection", (ws) => {
 // Start
 // ────────────────────────────────────────────────────────────
 
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, HOST, () => {
+  const os = require("os");
+  const nets = os.networkInterfaces();
+  const lanAddresses = Object.values(nets)
+    .flat()
+    .filter((i) => i.family === "IPv4" && !i.internal);
+
   console.log();
   console.log("  🚀 WebRTC Signaling Server");
-  console.log(`  ─────────────────────────────`);
-  console.log(`  Auto mode:    http://localhost:${PORT}/`);
-  console.log(`  Manual mode:  http://localhost:${PORT}/sender`);
-  console.log(`                http://localhost:${PORT}/receiver`);
+  console.log("  ─────────────────────────────");
+  console.log(`  Local:        http://localhost:${PORT}/`);
+  lanAddresses.forEach((i) => {
+    console.log(`  Network:      http://${i.address}:${PORT}/`);
+  });
   console.log();
+  console.log("  Auto mode:    /         (open in two tabs)");
+  console.log("  Manual mode:  /sender   + /receiver");
+  if (lanAddresses.length > 0) {
+    console.log();
+    console.log("  📱 Open the Network URL on another device to test cross-device.");
+  }
+  console.log();
+});
 });
