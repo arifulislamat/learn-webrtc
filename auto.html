@@ -233,8 +233,12 @@
           // ---- Received an ICE candidate ----
           case "ice-candidate":
             if (pc) {
-              log("Adding remote ICE candidate");
-              await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+              try {
+                log("Adding remote ICE candidate");
+                await pc.addIceCandidate(msg.candidate);
+              } catch (err) {
+                log("ICE candidate error (ignored): " + err.message);
+              }
             }
             break;
         }
@@ -271,7 +275,7 @@
 
         // Trickle ICE: send each candidate to the other peer as it's discovered
         pc.onicecandidate = (event) => {
-          if (event.candidate) {
+          if (event.candidate && event.candidate.candidate) {
             log("Sending ICE candidate to peer");
             ws.send(
               JSON.stringify({
