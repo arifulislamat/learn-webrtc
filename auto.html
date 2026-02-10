@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebRTC Auto-Signaling — Peer-to-Peer Chat</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 24px 20px;
+        color: #1a1a2e;
+        background: #fafbfc;
+        line-height: 1.5;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 1.6rem;
+      }
+      h3 {
+        font-size: 1rem;
+        color: #24292f;
+      }
+      .subtitle {
+        color: #666;
+        font-size: 0.9rem;
+        margin: 0 0 16px;
+      }
+      textarea {
+        width: 100%;
+        height: 40px;
+        margin: 6px 0;
+        padding: 10px;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 0.9rem;
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        resize: vertical;
+        transition: border-color 0.15s;
+      }
+      textarea:focus {
+        outline: none;
+        border-color: #0969da;
+        box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
+      }
+      button {
+        padding: 8px 18px;
+        margin: 6px 4px 6px 0;
+        cursor: pointer;
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        background: #f6f8fa;
+        font-size: 0.85rem;
+        font-weight: 500;
+        transition: all 0.15s;
+      }
+      button:hover:not(:disabled) {
+        background: #0969da;
+        color: #fff;
+        border-color: #0969da;
+      }
+      #status {
+        padding: 10px 14px;
+        background: #ddf4ff;
+        border: 1px solid #54aeff44;
+        border-radius: 6px;
+        margin: 12px 0;
+        font-size: 0.88rem;
+        font-weight: 500;
+      }
+      #log {
+        font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+        font-size: 12px;
+        background: #24292f;
+        color: #7ee787;
+        padding: 16px;
+        border-radius: 8px;
+        min-height: 150px;
+        max-height: 300px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        line-height: 1.6;
+      }
+      #chatSection {
+        display: none;
+      }
+      #receivedMessages {
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        padding: 12px;
+        min-height: 100px;
+        max-height: 300px;
+        overflow-y: auto;
+        background: #fff;
+        margin-bottom: 10px;
+      }
+      #receivedMessages p {
+        margin: 3px 0;
+        font-size: 0.9rem;
+      }
+      .sent {
+        color: #0550ae;
+      }
+      .received {
+        color: #1a7f37;
+      }
+      .info {
+        border: 1px solid #54aeff44;
+        background: #ddf4ff;
+        padding: 14px 18px;
+        border-radius: 8px;
+        margin: 12px 0;
+        font-size: 0.88rem;
+        color: #24292f;
+      }
+      .info code {
+        background: #afdbf544;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.85em;
+      }
+      footer {
+        margin-top: 32px;
+        padding-top: 16px;
+        border-top: 1px solid #d8dee4;
+        text-align: center;
+        font-size: 0.82rem;
+        color: #656d76;
+      }
+      footer a {
+        color: #0969da;
+        text-decoration: none;
+      }
+      footer a:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>WebRTC with Auto-Signaling</h1>
+    <p class="subtitle">
+      WebSocket-based signaling — open in two tabs to connect automatically
+    </p>
+
+    <div class="info">
+      <strong>How to use:</strong> Open this page in <b>two tabs</b>. The first
+      tab becomes the <em>Sender</em> (creates the offer), and the second tab
+      becomes the <em>Receiver</em> (answers it). The signaling server
+      (<code>server.js</code>) relays the offer/answer/ICE candidates
+      automatically.
+    </div>
+
+    <div id="status">Status: Connecting to signaling server...</div>
+
+    <div id="chatSection">
+      <h3>Chat (peer-to-peer via Data Channel)</h3>
+      <div id="receivedMessages"></div>
+      <textarea id="messageInput" placeholder="Type your message..."></textarea>
+      <button id="sendMessageButton">Send Message</button>
+    </div>
+
+    <h3>Signaling Log</h3>
+    <div id="log"></div>
+
+    <script>
+      // ========== DOM ==========
+      const statusDiv = document.getElementById("status");
+      const logDiv = document.getElementById("log");
+      const chatSection = document.getElementById("chatSection");
+      const messageInput = document.getElementById("messageInput");
+      const receivedMessagesDiv = document.getElementById("receivedMessages");
+      const sendButton = document.getElementById("sendMessageButton");
+
+      let pc; // RTCPeerConnection
+      let dataChannel; // Data channel for chat
+      let ws; // WebSocket to signaling server
+      let isSender = false;
+
+      function setStatus(msg) {
+        statusDiv.textContent = "Status: " + msg;
+      }
+
+      function log(msg) {
+        const time = new Date().toLocaleTimeString();
+        logDiv.textContent += `[${time}] ${msg}\n`;
+        logDiv.scrollTop = logDiv.scrollHeight;
+        console.log(msg);
+      }
+
+      // ========== 1. Connect to Signaling Server ==========
+      ws = new WebSocket(`ws://${location.host}`);
+
+      ws.onopen = () => {
+        log("Connected to signaling server");
+        setStatus("Connected to signaling server. Waiting for peer...");
+        // Tell the server we're here; first client to connect becomes the sender
+        ws.send(JSON.stringify({ type: "join" }));
+      };
+
+      ws.onmessage = async (event) => {
+        const msg = JSON.parse(event.data);
+        log(`Received signaling message: ${msg.type}`);
+
+        switch (msg.type) {
+          // ---- Another peer joined, we are the sender ----
+          case "join":
+            isSender = true;
+            log("Another peer joined — I am the SENDER. Creating offer...");
+            await startAsSender();
+            break;
+
+          // ---- Received an offer, we are the receiver ----
+          case "offer":
+            log("Received offer — I am the RECEIVER. Creating answer...");
+            await startAsReceiver(msg);
+            break;
+
+          // ---- Received an answer (we are the sender) ----
+          case "answer":
+            log("Received answer. Setting remote description...");
+            await pc.setRemoteDescription(new RTCSessionDescription(msg));
+            break;
+
+          // ---- Received an ICE candidate ----
+          case "ice-candidate":
+            if (pc) {
+              log("Adding remote ICE candidate");
+              await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+            }
+            break;
+        }
+      };
+
+      ws.onerror = (err) => {
+        setStatus("WebSocket error — is server.js running?");
+        log("WebSocket error: " + err.message);
+      };
+
+      // ========== 2. Create Peer Connection ==========
+      function createPeerConnection() {
+        pc = new RTCPeerConnection({
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+          ],
+        });
+
+        // Trickle ICE: send each candidate to the other peer as it's discovered
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            log("Sending ICE candidate to peer");
+            ws.send(
+              JSON.stringify({
+                type: "ice-candidate",
+                candidate: event.candidate,
+              }),
+            );
+          } else {
+            log("ICE gathering complete");
+          }
+        };
+
+        pc.oniceconnectionstatechange = () => {
+          log("ICE state: " + pc.iceConnectionState);
+          setStatus("ICE: " + pc.iceConnectionState);
+          if (
+            pc.iceConnectionState === "connected" ||
+            pc.iceConnectionState === "completed"
+          ) {
+            setStatus("Connected peer-to-peer! 🎉");
+          }
+        };
+
+        // Handle incoming data channel (receiver side)
+        pc.ondatachannel = (event) => {
+          log("Incoming data channel: " + event.channel.label);
+          setupDataChannel(event.channel);
+        };
+      }
+
+      // ========== 3. Sender Flow ==========
+      async function startAsSender() {
+        createPeerConnection();
+
+        // Sender creates the data channel
+        const ch = pc.createDataChannel("chat");
+        setupDataChannel(ch);
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        log("Sending offer to peer via signaling server");
+        ws.send(JSON.stringify(pc.localDescription));
+      }
+
+      // ========== 4. Receiver Flow ==========
+      async function startAsReceiver(offer) {
+        createPeerConnection();
+
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        log("Sending answer to peer via signaling server");
+        ws.send(JSON.stringify(pc.localDescription));
+      }
+
+      // ========== 5. Data Channel Setup ==========
+      function setupDataChannel(channel) {
+        dataChannel = channel;
+        dataChannel.onopen = () => {
+          log("Data channel OPEN!");
+          setStatus("Data channel open — chat away!");
+          chatSection.style.display = "block";
+        };
+        dataChannel.onclose = () => {
+          log("Data channel closed");
+          setStatus("Data channel closed");
+        };
+        dataChannel.onmessage = (event) => {
+          receivedMessagesDiv.innerHTML += `<p class="received">Peer: ${event.data}</p>`;
+          receivedMessagesDiv.scrollTop = receivedMessagesDiv.scrollHeight;
+        };
+      }
+
+      // ========== 6. Chat ==========
+      sendButton.onclick = () => {
+        const message = messageInput.value.trim();
+        if (!message || !dataChannel || dataChannel.readyState !== "open")
+          return;
+        dataChannel.send(message);
+        receivedMessagesDiv.innerHTML += `<p class="sent">You: ${message}</p>`;
+        receivedMessagesDiv.scrollTop = receivedMessagesDiv.scrollHeight;
+        messageInput.value = "";
+      };
+
+      messageInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendButton.click();
+        }
+      });
+    </script>
+
+    <footer>
+      Built by
+      <a
+        href="https://arifulislamat.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        >Ariful Islam</a
+      >
+      · WebRTC Learning Playground
+    </footer>
+  </body>
+</html>

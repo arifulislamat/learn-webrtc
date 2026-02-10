@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebRTC Sender — Manual Signaling</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 24px 20px;
+        color: #1a1a2e;
+        background: #fafbfc;
+        line-height: 1.5;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 1.6rem;
+      }
+      .subtitle {
+        color: #666;
+        font-size: 0.9rem;
+        margin: 0 0 16px;
+      }
+      textarea {
+        width: 100%;
+        height: 60px;
+        margin: 6px 0;
+        padding: 10px;
+        font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+        font-size: 12px;
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        resize: vertical;
+        transition: border-color 0.15s;
+      }
+      textarea:focus {
+        outline: none;
+        border-color: #021225;
+        box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
+      }
+      button {
+        padding: 8px 18px;
+        margin: 6px 4px 6px 0;
+        cursor: pointer;
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        background: #f6f8fa;
+        font-size: 0.85rem;
+        font-weight: 500;
+        transition: all 0.15s;
+      }
+      button:hover:not(:disabled) {
+        background: #404142;
+        color: #fff;
+        border-color: #161616;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .step {
+        border: 1px solid #d0d7de;
+        padding: 16px 20px;
+        margin: 12px 0;
+        border-radius: 10px;
+        background: #fff;
+      }
+      .step h3 {
+        margin: 0 0 8px;
+        font-size: 1rem;
+        color: #24292f;
+      }
+      .step p {
+        margin: 0 0 10px;
+        font-size: 0.88rem;
+        color: #57606a;
+      }
+      #status {
+        padding: 10px 14px;
+        background: #ddf4ff;
+        border: 1px solid #54aeff44;
+        border-radius: 6px;
+        margin: 12px 0;
+        font-size: 0.88rem;
+        font-weight: 500;
+      }
+      #chatSection {
+        display: none;
+      }
+      #receivedMessages {
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        padding: 12px;
+        min-height: 100px;
+        max-height: 300px;
+        overflow-y: auto;
+        background: #fff;
+        margin-bottom: 10px;
+      }
+      #receivedMessages p {
+        margin: 3px 0;
+        font-size: 0.9rem;
+      }
+      #receivedMessages .sent {
+        color: #0550ae;
+      }
+      #receivedMessages .received {
+        color: #1a7f37;
+      }
+      footer {
+        margin-top: 32px;
+        padding-top: 16px;
+        border-top: 1px solid #d8dee4;
+        text-align: center;
+        font-size: 0.82rem;
+        color: #656d76;
+      }
+      footer a {
+        color: #0969da;
+        text-decoration: none;
+      }
+      footer a:hover {
+        text-decoration: underline;
+      }
+      nav {
+        margin-bottom: 20px;
+        font-size: 0.85rem;
+      }
+      nav a {
+        color: #0969da;
+        text-decoration: none;
+        margin-right: 12px;
+      }
+      nav a:hover {
+        text-decoration: underline;
+      }
+      nav a.active {
+        font-weight: 600;
+        text-decoration: underline;
+      }
+      .troubleshoot {
+        display: none;
+        border: 1px solid #cf222e44;
+        background: #ffebe9;
+        padding: 14px 18px;
+        border-radius: 8px;
+        margin: 12px 0;
+        font-size: 0.85rem;
+        color: #24292f;
+        line-height: 1.6;
+      }
+      .troubleshoot summary {
+        cursor: pointer;
+        font-weight: 600;
+        color: #cf222e;
+        margin-bottom: 6px;
+      }
+      .troubleshoot code {
+        background: #cf222e11;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.85em;
+      }
+      .troubleshoot ol {
+        padding-left: 18px;
+        margin: 8px 0;
+      }
+      .troubleshoot li {
+        margin: 4px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Sender Device</h1>
+    <p class="subtitle">
+      Manual signaling mode — copy/paste the offer and answer between tabs
+    </p>
+    <div id="status">Status: Initializing...</div>
+
+    <!-- Troubleshooting banner (shown on ICE failure) -->
+    <div id="troubleshoot" class="troubleshoot">
+      <details open>
+        <summary>Connection failed — ICE disconnected</summary>
+        <p>
+          <strong>Brave / Chromium-based browsers</strong> anonymize local IPs
+          with <code>.local</code> mDNS addresses for privacy. In manual
+          copy-paste mode, the other tab can't resolve these addresses, so
+          connectivity checks fail.
+        </p>
+        <p><strong>Fixes (pick one):</strong></p>
+        <ol>
+          <li>
+            <strong>Use the auto-signaling mode instead</strong> — run
+            <code>node server.js</code> and open
+            <a href="http://localhost:8080">localhost:8080</a> in two tabs.
+            Trickle ICE + localhost works reliably in Brave.
+          </li>
+          <li>
+            <strong>Disable mDNS anonymization in Brave:</strong> go to
+            <code>brave://flags/#enable-webrtc-hide-local-ips-with-mdns</code> →
+            set to <strong>Disabled</strong> → relaunch Brave.
+          </li>
+          <li>
+            <strong>Lower Brave Shields</strong> for this page (click the lion
+            icon → toggle Shields off).
+          </li>
+        </ol>
+      </details>
+    </div>
+
+    <!-- STEP 1: Create offer -->
+    <div class="step">
+      <h3>Step 1: Create & Copy Offer</h3>
+      <p>
+        Click the button to create an offer. Once ICE gathering is complete,
+        copy the offer and paste it in the <b>Receiver</b> page.
+      </p>
+      <button id="createOfferBtn">Create Offer</button>
+      <textarea
+        id="offerOutput"
+        readonly
+        placeholder="Offer SDP will appear here..."
+      ></textarea>
+      <button id="copyOfferBtn" disabled>Copy Offer to Clipboard</button>
+    </div>
+
+    <!-- STEP 2: Paste answer from receiver -->
+    <div class="step">
+      <h3>Step 2: Paste Answer from Receiver</h3>
+      <p>
+        After the receiver creates an answer, paste it here and click "Set
+        Answer".
+      </p>
+      <textarea
+        id="answerInput"
+        placeholder="Paste the answer from the receiver here..."
+      ></textarea>
+      <button id="setAnswerBtn">Set Answer</button>
+    </div>
+
+    <!-- STEP 3: Chat -->
+    <div id="chatSection" class="step">
+      <h3>Chat (Data Channel)</h3>
+      <div id="receivedMessages"></div>
+      <textarea
+        id="messageInput"
+        placeholder="Type your message..."
+        style="height: 40px"
+      ></textarea>
+      <button id="sendMessageButton">Send Message</button>
+    </div>
+
+    <script>
+      // ========== DOM Elements ==========
+      const statusDiv = document.getElementById("status");
+      const offerOutput = document.getElementById("offerOutput");
+      const answerInput = document.getElementById("answerInput");
+      const createOfferBtn = document.getElementById("createOfferBtn");
+      const copyOfferBtn = document.getElementById("copyOfferBtn");
+      const setAnswerBtn = document.getElementById("setAnswerBtn");
+      const chatSection = document.getElementById("chatSection");
+      const messageInput = document.getElementById("messageInput");
+      const receivedMessagesDiv = document.getElementById("receivedMessages");
+      const sendButton = document.getElementById("sendMessageButton");
+
+      let pc; // RTCPeerConnection
+      let dataChannel; // The data channel (sender creates this)
+
+      function setStatus(msg) {
+        statusDiv.textContent = "Status: " + msg;
+        console.log("[Sender]", msg);
+      }
+
+      // ========== Step 1: Create Connection & Offer ==========
+      createOfferBtn.onclick = async () => {
+        setStatus("Creating peer connection...");
+
+        // STUN servers help discover public IP for NAT traversal
+        pc = new RTCPeerConnection({
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+          ],
+        });
+
+        // === Create data channel BEFORE creating offer ===
+        // The sender creates the channel; the receiver gets it via ondatachannel
+        dataChannel = pc.createDataChannel("chat");
+        dataChannel.onopen = () => {
+          setStatus("Data channel OPEN! You can chat now.");
+          chatSection.style.display = "block";
+        };
+        dataChannel.onclose = () => setStatus("Data channel closed.");
+        dataChannel.onmessage = (event) => {
+          receivedMessagesDiv.innerHTML += `<p class="received">Receiver: ${event.data}</p>`;
+        };
+
+        // === ICE Candidate Handling ===
+        // We wait for ALL ICE candidates to be gathered (they get embedded in the SDP).
+        // When onicecandidate fires with null, gathering is complete.
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            console.log("ICE candidate found:", event.candidate.candidate);
+          } else {
+            // All candidates gathered — the full offer (with candidates) is ready
+            setStatus("ICE gathering complete. Copy the offer below.");
+            offerOutput.value = JSON.stringify(pc.localDescription);
+            copyOfferBtn.disabled = false;
+          }
+        };
+
+        pc.oniceconnectionstatechange = () => {
+          const state = pc.iceConnectionState;
+          setStatus("ICE connection state: " + state);
+          if (state === "failed" || state === "disconnected") {
+            document.getElementById("troubleshoot").style.display = "block";
+          }
+          if (state === "connected" || state === "completed") {
+            document.getElementById("troubleshoot").style.display = "none";
+          }
+        };
+
+        // Create the offer
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        setStatus(
+          "Offer created. Waiting for ICE candidates to be gathered...",
+        );
+      };
+
+      // Copy offer to clipboard (with fallback for Brave / file:// contexts)
+      copyOfferBtn.onclick = () => {
+        copyToClipboard(offerOutput.value);
+        setStatus("Offer copied! Now paste it in the Receiver page.");
+      };
+
+      function copyToClipboard(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+        } else {
+          fallbackCopy(text);
+        }
+      }
+
+      function fallbackCopy(text) {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+
+      // ========== Step 2: Set the Receiver's Answer ==========
+      setAnswerBtn.onclick = async () => {
+        try {
+          const answer = JSON.parse(answerInput.value);
+          await pc.setRemoteDescription(new RTCSessionDescription(answer));
+          setStatus("Answer set! Waiting for data channel to open...");
+        } catch (e) {
+          setStatus("Error setting answer: " + e.message);
+        }
+      };
+
+      // ========== Step 3: Send Messages ==========
+      sendButton.onclick = () => {
+        const message = messageInput.value.trim();
+        if (!message) return;
+        if (dataChannel.readyState !== "open") {
+          setStatus("Data channel not open yet!");
+          return;
+        }
+        dataChannel.send(message);
+        receivedMessagesDiv.innerHTML += `<p class="sent">You: ${message}</p>`;
+        messageInput.value = "";
+      };
+
+      // Send on Enter key
+      messageInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendButton.click();
+        }
+      });
+
+      setStatus("Ready. Click 'Create Offer' to start.");
+    </script>
+
+    <footer>
+      Built by
+      <a
+        href="https://arifulislamat.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        >Ariful Islam</a
+      >
+      · WebRTC Learning Playground
+    </footer>
+  </body>
+</html>

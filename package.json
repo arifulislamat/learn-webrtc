@@ -1,0 +1,29 @@
+{
+  "name": "webrtc-learning-playground",
+  "version": "1.0.0",
+  "description": "A hands-on WebRTC experiment — peer-to-peer data channel communication from scratch with manual and auto-signaling modes.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "webrtc",
+    "peer-to-peer",
+    "data-channel",
+    "signaling",
+    "websocket",
+    "real-time"
+  ],
+  "author": "Ariful Islam <https://arifulislamat.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.19.0"
+  }
+}
