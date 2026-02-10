@@ -2,7 +2,9 @@
 
 A hands-on WebRTC experiment for developers who learn by building. This repository implements **peer-to-peer data channel communication** from scratch — no frameworks, no abstractions, just raw WebRTC APIs with clear annotations.
 
-> **Author:** [Ariful Islam](https://arifulislamat.com)
+<p align="center">
+  <img src="assets/webrtc.jpg" alt="WebRTC Learning Playground" width="100%" />
+</p>
 
 ---
 
