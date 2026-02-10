@@ -130,7 +130,9 @@ httpServer.listen(PORT, HOST, () => {
   console.log("  Manual mode:  /sender   + /receiver");
   if (lanAddresses.length > 0) {
     console.log();
-    console.log("  📱 Open the Network URL on another device to test cross-device.");
+    console.log(
+      "  📱 Open the Network URL on another device to test cross-device.",
+    );
   }
   console.log();
 });
